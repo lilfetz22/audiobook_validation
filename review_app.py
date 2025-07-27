@@ -191,25 +191,29 @@ class AudiobookReviewApp:
         all_text_blocks = []
 
         # We iterate through the document's body to get both paragraphs and tables in order
-        # This uses an internal attribute _body, which is a standard way to handle this in python-docx
-        for block in doc._body._element.body.iterchildren():
+        # doc._body is the high-level wrapper; doc._body._element is the underlying XML object
+        # ### FIX: Removed the extra .body attribute that caused the crash ###
+        for block in doc._body._element.iterchildren():
+
             # Check if the block is a paragraph
             if isinstance(block, docx.oxml.text.paragraph.CT_P):
-                para_text = docx.text.paragraph.Paragraph(block, doc._body).text
-                if para_text.strip():
-                    all_text_blocks.append(para_text)
+                # Re-constitute the Paragraph object from its XML element and parent
+                para = docx.text.paragraph.Paragraph(block, doc._body)
+                if para.text.strip():
+                    all_text_blocks.append(para.text)
 
             # Check if the block is a table
             elif isinstance(block, docx.oxml.table.CT_Tbl):
                 logging.info("Found a table in the document. Extracting cell text.")
+                # Re-constitute the Table object from its XML element and parent
                 table = docx.table.Table(block, doc._body)
                 # Iterate through rows, then cells (left-to-right, top-to-bottom)
                 for row in table.rows:
                     for cell in row.cells:
-                        cell_text = cell.text
-                        if cell_text.strip():
+                        # We can just get the text directly from the cell
+                        if cell.text.strip():
                             # Treat each cell as its own paragraph
-                            all_text_blocks.append(cell_text)
+                            all_text_blocks.append(cell.text)
 
         # Join all collected text blocks into a single string for display
         self.full_manuscript_text = "\n\n".join(all_text_blocks)
