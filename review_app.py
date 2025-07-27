@@ -11,6 +11,7 @@ import time
 import logging
 import re
 import argparse
+from mismatch_detector import MismatchDetector
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -49,6 +50,7 @@ class AudiobookReviewApp:
         self.tk_index_map = {}
         self.last_highlighted_word_index = -1
         self.after_id = None
+        self.mismatches = []
 
         self._setup_ui()
 
@@ -86,10 +88,34 @@ class AudiobookReviewApp:
         self.text_widget.config(yscrollcommand=scrollbar.set)
 
         self.text_widget.tag_configure("current_word", background="lightblue")
+        self.text_widget.tag_configure(
+            "substitution", background="#FFDDDD"
+        )  # Light Red
+        self.text_widget.tag_configure(
+            "deletion", background="#FFFFCC", overstrike=True
+        )  # Yellow with strikethrough
 
         # --- CHANGE: Remapped timestamp feature to Ctrl+Click to resolve conflict ---
         self.text_widget.bind("<Control-Button-1>", self.show_timestamp_info)
         self.text_widget.bind("<Double-Button-1>", self.double_click_to_seek)
+
+        ### --- NEW: Right panel with sensitivity slider ---
+        right_panel = ttk.Frame(self.root, width=200, padding="10")
+        right_panel.pack(fill=tk.Y, side=tk.RIGHT)
+
+        ttk.Label(
+            right_panel, text="Confidence Threshold:", font=("Helvetica", 10, "bold")
+        ).pack(pady=(0, 5), anchor="w")
+        self.sensitivity_slider = ttk.Scale(
+            right_panel,
+            from_=0,
+            to=100,
+            orient=tk.HORIZONTAL,
+            # ### CHANGE: The command now calls our new function ###
+            command=lambda event: self._apply_mismatch_highlights(),
+        )
+        self.sensitivity_slider.set(70)  # Default to 70% confidence
+        self.sensitivity_slider.pack(fill=tk.X, pady=5, anchor="n")
 
         control_frame = ttk.Frame(self.root, padding="10")
         control_frame.pack(fill=tk.X)
@@ -104,7 +130,6 @@ class AudiobookReviewApp:
             side=tk.LEFT, padx=5
         )
 
-    # --- Other methods remain the same ---
     def fast_forward(self, seconds=15.0):
         current_pos = (pygame.mixer.music.get_pos() / 1000.0) + self.playback_offset
         new_start = current_pos + seconds
@@ -192,8 +217,20 @@ class AudiobookReviewApp:
             self._parse_docx(docx_path)
             logging.info(f"Processing JSON: {json_path}")
             self._parse_json(json_path)
+            # Create the detector and find mismatches
+            detector = MismatchDetector(
+                self.manuscript_tokens, self.transcribed_data, self.full_manuscript_text
+            )
+            self.mismatches = (
+                detector.find_mismatches()
+            )  # This will be our new list of mismatch objects
+
+            # The rest of the processing continues...
             self.display_full_text()
+            # The _create_word_map() for the karaoke highlighter is still needed and separate.
             self._create_word_map()
+            # We will then add a new function to apply the visual highlights
+            self._apply_mismatch_highlights()
             logging.info(f"Loading audio: {audio_path}")
             pygame.mixer.music.load(audio_path)
             logging.info("Processing complete. Ready for playback.")
@@ -391,6 +428,63 @@ class AudiobookReviewApp:
         if self.after_id:
             self.root.after_cancel(self.after_id)
         self.root.destroy()
+
+    def _apply_mismatch_highlights(self):
+        """
+        Clears existing mismatch highlights and reapplies them based on the
+        current sensitivity slider value and mismatch status.
+        """
+        if not self.mismatches:
+            return
+
+        logging.info("Applying mismatch highlights.")
+        threshold = self.sensitivity_slider.get() / 100.0
+
+        self.text_widget.config(state=tk.NORMAL)
+
+        # Clear all existing mismatch tags from the text widget
+        for tag in ["substitution", "deletion"]:
+            self.text_widget.tag_remove(tag, "1.0", tk.END)
+
+        # Loop through all found mismatches and apply tags if they meet the criteria
+        for mismatch in self.mismatches:
+            # Skip if the user has ignored this mismatch
+            if mismatch["status"] == "ignored":
+                continue
+
+            # Skip if the mismatch confidence is below the slider's threshold
+            if mismatch["confidence"] < threshold:
+                continue
+
+            # We can only visually highlight substitutions and deletions as they
+            # map directly to text that exists in the manuscript widget.
+            if mismatch["type"] == "replace" or mismatch["type"] == "delete":
+                start_token_idx, end_token_idx = mismatch["manuscript_indices"]
+
+                # Ensure the indices are valid and there's something to highlight
+                if start_token_idx < end_token_idx:
+                    start_char = self.manuscript_tokens[start_token_idx]["start"]
+                    # The end token index is exclusive, so we use the token before it
+                    end_char = self.manuscript_tokens[end_token_idx - 1]["end"]
+
+                    tk_start = f"1.0 + {start_char} chars"
+                    tk_end = f"1.0 + {end_char} chars"
+
+                    tag_name = (
+                        "substitution" if mismatch["type"] == "replace" else "deletion"
+                    )
+                    self.text_widget.tag_add(tag_name, tk_start, tk_end)
+
+            elif mismatch["type"] == "insert":
+                # As discussed, visually showing an insertion is complex because it means
+                # adding text that isn't in the original manuscript, which would break our
+                # coordinate system. For now, we log it. A future feature could be a separate
+                # list view for insertions.
+                logging.debug(
+                    f"Skipping visual highlight for insertion: '{mismatch['narrated_text']}'"
+                )
+
+        self.text_widget.config(state=tk.DISABLED)
 
 
 if __name__ == "__main__":

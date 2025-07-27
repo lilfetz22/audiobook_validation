@@ -20,3 +20,6 @@ narrations/*
 
 # log messages
 *.log
+
+# place to put notes for feedback to narrator
+feedback.notesnlh
