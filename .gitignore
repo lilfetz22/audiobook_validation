@@ -1,0 +1,19 @@
+# Ignore VS Code specific files
+.vscode/
+
+# Ignore Python virtual environment
+audiovenv/
+*.pyc
+__pycache__/
+
+# --- DATA FOLDERS ---
+# Ignore all contents of these folders...
+jsons/*
+manuscripts/*
+narrations/*
+
+# ...but DO NOT ignore the .gitkeep files inside them.
+# This makes Git track the empty directory structure.
+!jsons/.gitkeep
+!manuscripts/.gitkeep
+!narrations/.gitkeep
