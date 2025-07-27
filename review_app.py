@@ -180,18 +180,49 @@ class AudiobookReviewApp:
                 text="Error loading files. Please try again."
             )
 
-    # All other methods (_parse_docx, _parse_json, _create_word_map, etc.) remain the same
     def _parse_docx(self, path):
+        """
+        Parses the entire DOCX document, including paragraphs and tables,
+        maintaining the original document order.
+        """
+        logging.info("Starting advanced DOCX parsing (including tables).")
         doc = docx.Document(path)
-        self.full_manuscript_text = "\n\n".join(
-            [p.text for p in doc.paragraphs if p.text.strip()]
-        )
+
+        all_text_blocks = []
+
+        # We iterate through the document's body to get both paragraphs and tables in order
+        # This uses an internal attribute _body, which is a standard way to handle this in python-docx
+        for block in doc._body._element.body.iterchildren():
+            # Check if the block is a paragraph
+            if isinstance(block, docx.oxml.text.paragraph.CT_P):
+                para_text = docx.text.paragraph.Paragraph(block, doc._body).text
+                if para_text.strip():
+                    all_text_blocks.append(para_text)
+
+            # Check if the block is a table
+            elif isinstance(block, docx.oxml.table.CT_Tbl):
+                logging.info("Found a table in the document. Extracting cell text.")
+                table = docx.table.Table(block, doc._body)
+                # Iterate through rows, then cells (left-to-right, top-to-bottom)
+                for row in table.rows:
+                    for cell in row.cells:
+                        cell_text = cell.text
+                        if cell_text.strip():
+                            # Treat each cell as its own paragraph
+                            all_text_blocks.append(cell_text)
+
+        # Join all collected text blocks into a single string for display
+        self.full_manuscript_text = "\n\n".join(all_text_blocks)
+
+        # Tokenize the newly created full text for the word map
         self.manuscript_tokens = []
         for match in re.finditer(r"\b\w+\b", self.full_manuscript_text):
             self.manuscript_tokens.append(
                 {"word": match.group(0), "start": match.start(), "end": match.end()}
             )
-        logging.info(f"Parsed {len(self.manuscript_tokens)} word tokens from DOCX.")
+        logging.info(
+            f"Advanced parse complete. Parsed {len(all_text_blocks)} total text blocks and {len(self.manuscript_tokens)} word tokens from DOCX."
+        )
 
     def _parse_json(self, path):
         with open(path, "r", encoding="utf-8") as f:
