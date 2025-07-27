@@ -87,8 +87,8 @@ class AudiobookReviewApp:
 
         self.text_widget.tag_configure("current_word", background="lightblue")
 
-        # --- CHANGE: Bind both single-click/release and double-click to different functions ---
-        self.text_widget.bind("<ButtonRelease-1>", self.show_timestamp_info)
+        # --- CHANGE: Remapped timestamp feature to Ctrl+Click to resolve conflict ---
+        self.text_widget.bind("<Control-Button-1>", self.show_timestamp_info)
         self.text_widget.bind("<Double-Button-1>", self.double_click_to_seek)
 
         control_frame = ttk.Frame(self.root, padding="10")
@@ -100,73 +100,48 @@ class AudiobookReviewApp:
         ttk.Button(control_frame, text="⏮ 5s", command=self.rewind).pack(
             side=tk.LEFT, padx=5
         )
-
-        # --- NEW: Fast-forward button ---
         ttk.Button(control_frame, text="⏭ 15s", command=self.fast_forward).pack(
             side=tk.LEFT, padx=5
         )
 
-    # --- NEW: Fast-forward function ---
+    # --- Other methods remain the same ---
     def fast_forward(self, seconds=15.0):
-        # Calculate current time, including the offset from previous seeks
         current_pos = (pygame.mixer.music.get_pos() / 1000.0) + self.playback_offset
         new_start = current_pos + seconds
         logging.info(f"Fast-forwarding from {current_pos:.2f}s to {new_start:.2f}s.")
         self.seek_to(new_start)
 
-    # --- NEW: Double-click seeking function ---
     def double_click_to_seek(self, event):
         logging.info("Double-click detected, attempting to seek.")
-        # Find the Tkinter text index under the cursor
         click_index = self.text_widget.index(f"@{event.x},{event.y}")
-        # Find the start of the word at that location
         word_start_index = self.text_widget.index(f"{click_index} wordstart")
-
-        # Use our reverse map to find the corresponding index in the Whisper data
         whisper_idx = self.tk_index_map.get(word_start_index)
-
         if whisper_idx is not None:
-            # If we found a match, get its start time
             start_time = self.transcribed_data[whisper_idx]["start"]
             logging.info(
                 f"User double-clicked word '{self.transcribed_data[whisper_idx]['word']}', seeking to {start_time:.2f}s"
             )
-            # Use the central seek function
             self.seek_to(start_time)
         else:
             logging.warning(
                 f"Could not find a mapped timestamp for the word at {word_start_index}."
             )
 
-    ### --- The rest of the script, with the `rewind` function also updated for consistency ---
-
     def rewind(self, seconds=5.0):
-        # REFACTOR: Centralize logic by calling seek_to
         current_pos = (pygame.mixer.music.get_pos() / 1000.0) + self.playback_offset
         new_start = max(0, current_pos - seconds)
         logging.info(f"Rewinding from {current_pos:.2f}s to {new_start:.2f}s.")
         self.seek_to(new_start)
 
     def seek_to(self, time_in_seconds):
-        """The central function for all seeking operations."""
-        # 1. Reset the highlighter so it can find the new word
         self.reset_highlighter_state()
-
-        # 2. Start playback from the new position
-        # The `start` argument in pygame.mixer.music.play handles seeking
         pygame.mixer.music.play(start=time_in_seconds)
-
-        # 3. Store the new base offset. All future get_pos() calls will be relative to this.
         self.playback_offset = time_in_seconds
-
-        # 4. Ensure the UI state is correct and the update loop is running
         if not self.is_playing:
             self.is_playing = True
             self.play_pause_button.config(text="⏸ Pause")
-            # Start the highlighter loop immediately
             self.update_highlight()
 
-    # (All other functions from the previous version remain the same)
     def _auto_load_files(self):
         logging.info("CLI arguments provided. Attempting to auto-load files.")
         self.loaded_files_label.config(text="Auto-loading files from command line...")
