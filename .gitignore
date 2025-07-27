@@ -17,3 +17,6 @@ narrations/*
 !jsons/.gitkeep
 !manuscripts/.gitkeep
 !narrations/.gitkeep
+
+# log messages
+*.log
