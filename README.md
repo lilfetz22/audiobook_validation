@@ -1,9 +1,3 @@
-Of course. The new, more powerful Colab workflow deserves a clear explanation in the `README.md`.
-
-Here is the updated `README.md` file, with the "Usage Guide" section completely rewritten to reflect the new batch processing form.
-
----
-
 # Audiobook Narrator Review Tool
 
 This project provides a complete workflow for proof-listening and validating audiobook recordings against their original manuscript. It helps identify discrepancies such as substitutions, deletions, and insertions made by the narrator.
